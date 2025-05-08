@@ -4,6 +4,7 @@ import discord
 from discord.ui import View, Button, Select
 import re
 import datetime
+import asyncio
 
 class State(Enum):
     REPORT_START = auto()
@@ -333,6 +334,9 @@ class BlockUserView(View):
         return True
 
 
+def check(msg):
+    return msg.author == interaction.user and msg.channel == interaction.channel
+
 class ModerationReviewView(View):
     def __init__(self, report, bot):
         super().__init__(timeout=600)
@@ -349,9 +353,32 @@ class ModerationReviewView(View):
         
         if action == "ignore":
             await interaction.response.send_message("**Action Taken: Ignored**\n\n(Optional) Leave a message explaining your decision.", ephemeral=True)
+            async def wait_for_comment():
+                def check(msg):
+                    return msg.author == interaction.user and msg.channel == interaction.channel
+
+                try:
+                    await interaction.client.wait_for('message', timeout=300, check=check)
+                    await interaction.followup.send("This report has been completed.", ephemeral=True)
+                except asyncio.TimeoutError:
+                    pass
+
+            asyncio.create_task(wait_for_comment())
+
 
         elif action == "warn":
             await interaction.response.send_message("**Action Taken: Warned the user.**\n\n(Optional) Leave a message explaining your decision.", ephemeral=True)
+            async def wait_for_comment():
+                def check(msg):
+                    return msg.author == interaction.user and msg.channel == interaction.channel
+
+                try:
+                    await interaction.client.wait_for('message', timeout=300, check=check)
+                    await interaction.followup.send("This report has been completed.", ephemeral=True)
+                except asyncio.TimeoutError:
+                    pass
+
+            asyncio.create_task(wait_for_comment())
 
         elif action == "punish":
             view = PunishActionView(self.report, self.bot)
@@ -359,7 +386,7 @@ class ModerationReviewView(View):
 
         elif action == "escalate":
             view = EscalationView(self.report, self.bot)
-            await interaction.response.send_message("🚩 **Escalation Options:**\nSelect escalation target:", view=view, ephemeral=True)
+            await interaction.response.send_message("**Escalation Options:**\nSelect escalation target:", view=view, ephemeral=True)
 
         return True
 
@@ -396,6 +423,17 @@ class PunishActionView(View):
             result = actions.get(punishment, "Action performed.")
 
         await interaction.response.send_message(f"**Action Taken: {result}**\n(Optional) Leave a message explaining your decision.", ephemeral=True)
+        async def wait_for_comment():
+            def check(msg):
+                return msg.author == interaction.user and msg.channel == interaction.channel
+
+            try:
+                await interaction.client.wait_for('message', timeout=300, check=check)
+                await interaction.followup.send("This report has been completed.", ephemeral=True)
+            except asyncio.TimeoutError:
+                pass
+
+        asyncio.create_task(wait_for_comment())
 
         return True
 
@@ -419,6 +457,17 @@ class EscalationView(View):
         result = targets.get(target, "Escalated.")
 
         await interaction.response.send_message(f"**{result}**\n(Required) Why did you escalate the report?", ephemeral=True)
+        async def wait_for_comment():
+            def check(msg):
+                return msg.author == interaction.user and msg.channel == interaction.channel
+
+            try:
+                await interaction.client.wait_for('message', timeout=300, check=check)
+                await interaction.followup.send("This report has been completed.", ephemeral=True)
+            except asyncio.TimeoutError:
+                pass
+
+        asyncio.create_task(wait_for_comment())
 
         return True
 
