@@ -44,6 +44,7 @@ class ModBot(discord.Client):
         self.completed_reports = [] # List to store completed reports
         self.active_views = {} # Map from message IDs to views
         self.processed_reports = set()  # Set to track reports that have been sent to mod channel
+        self.user_report_counts = {}  # for mapping user_id to counts
 
     async def on_ready(self):
         print(f'{self.user.name} has connected to Discord! It is these guilds:')
@@ -147,6 +148,13 @@ class ModBot(discord.Client):
         if report_id not in self.processed_reports:
             logger.info(f"Report is complete for {author.name}, sending to mod channel")
 
+            # Increment prior reports
+            if self.reports[author_id].reported_user:
+                user_id = self.reports[author_id].reported_user.id
+                self.user_report_counts[user_id] = self.user_report_counts.get(user_id, 0) + 1
+                # Store in report object so it passes to embed
+                self.reports[author_id].prior_reports_count = self.user_report_counts[user_id]
+
             # Before sending, check for required data
             if not self.reports[author_id].message:
                 logger.error(f"Report has no message data: {self.reports[author_id].get_report_data()}")
@@ -183,6 +191,9 @@ class ModBot(discord.Client):
             # Get the view associated with this message
             view = self.active_views.get(message_id)
             if not view:
+                if interaction.message.ephemeral:
+                    # Ignore ephemeral interaction messages
+                    return
                 logger.warning(f"No view found for message {message_id}")
                 return
 
@@ -224,17 +235,43 @@ class ModBot(discord.Client):
             mod_channel = self.mod_channels[guild_id]
             logger.info(f"Found mod channel: {mod_channel.name}")
 
-#            await mod_channel.send("Report received")
+            reporter_name = reporter.name if reporter else "Unknown"
+            reported_name = report.reported_user.name if report.reported_user else "automated"
+            message_content = report.message.content or "[No text content, message may be an audio file]"
+            if report.message.attachments:
+                attachments_text = "<TRANSCRIPT> (transcript placeholder) </TRANSCRIPT>\n"
+            else:
+                attachments_text = ""
+            timestamp_str = report.message.created_at.strftime("%Y-%m-%d %H:%M:%S")
+            targeted_status = "Yes" if report.hate_speech_targeted else "No"
+            prior_reports = getattr(report, 'prior_reports_count', 0)
+            context_messages = getattr(report, 'context_messages', 0)
+
             embed = discord.Embed(
-                title="New Report Received",
-                description=f"Reporter: {reporter.name}\nReported User: {report.reported_user.name if report.reported_user else 'Unknown'}\nType: {report.report_type}\nHate Speech Type: {report.hate_speech_type}",
-                timestamp=datetime.datetime.now(),
-                color=discord.Color.orange()
+                title=f"New Report Received: {report.hate_speech_type or report.report_type}",
+                color=discord.Color.orange(),
+                timestamp=datetime.datetime.now()
             )
 
-            view = ModerationReviewView(report, self)
+            body = f"""
+**Reporter:** {reporter_name}
+**Reported User:** {reported_name}
+**Reported Message:**
+```{message_content}```
+{attachments_text}
+**Timestamp:** {timestamp_str}
+**Prior Reports Against User:** {prior_reports}
+**Number of context messages requested:** {context_messages}
+**Targeted towards individual?** {targeted_status}
+"""
 
-            await mod_channel.send(embed=embed, view=view)
+            embed.add_field(name="Report Details", value=body, inline=False)
+
+            view = ModerationReviewView(report, self)
+            mod_message = await mod_channel.send(embed=embed, view=view)
+            self.active_views[mod_message.id] = view
+
+            logger.info("Report sent to mod channel with moderation view.")
             return True
 
         except Exception as e:

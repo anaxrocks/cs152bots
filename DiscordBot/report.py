@@ -46,6 +46,7 @@ class Report:
         self.context_messages = 0
         self.reported_user = None
         self.last_interaction = None  # To store the last message with components
+        self.prior_report_count = 0
 
     async def handle_message(self, message):
         '''
@@ -354,7 +355,7 @@ class ModerationReviewView(View):
 
         elif action == "punish":
             view = PunishActionView(self.report, self.bot)
-            await interaction.response.send_message("🔨 **Punishment Options:**\nSelect an action below:", view=view, ephemeral=True)
+            await interaction.response.send_message("**Punishment Options:**\nSelect an action below:", view=view, ephemeral=True)
 
         elif action == "escalate":
             view = EscalationView(self.report, self.bot)
@@ -376,14 +377,23 @@ class PunishActionView(View):
     async def interaction_check(self, interaction):
         punishment = interaction.data["custom_id"]
 
-        actions = {
-            "remove": "Message removed.",
-            "mute": "User temporarily muted.",
-            "shadowban": "User shadow-banned.",
-            "kick": "User kicked from server."
-        }
+        # Actually removes the message. If we want to keep as just a bot message, can put this back into the actions dictionary below
+        if punishment == "remove":
+            try:
+                await self.report.message.delete()
+                result = "Message removed."
+            except discord.Forbidden:
+                result = "Failed to remove message (insufficient permissions)."
+            except discord.HTTPException:
+                result = "Failed to remove message (unknown error)."
+        else:
+            actions = {
+                "mute": "User temporarily muted.",
+                "shadowban": "User shadow-banned.",
+                "kick": "User kicked from server."
+            }
 
-        result = actions.get(punishment, "Action performed.")
+            result = actions.get(punishment, "Action performed.")
 
         await interaction.response.send_message(f"**Action Taken: {result}**\n(Optional) Leave a message explaining your decision.", ephemeral=True)
 
