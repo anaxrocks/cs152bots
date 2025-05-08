@@ -1,3 +1,4 @@
+# report.py
 from enum import Enum, auto
 import discord
 from discord.ui import View, Button, Select
@@ -329,3 +330,85 @@ class BlockUserView(View):
             )
 
         return True
+
+
+class ModerationReviewView(View):
+    def __init__(self, report, bot):
+        super().__init__(timeout=600)
+        self.report = report
+        self.bot = bot
+
+        self.add_item(Button(style=discord.ButtonStyle.secondary, label="Ignore", custom_id="ignore"))
+        self.add_item(Button(style=discord.ButtonStyle.primary, label="Warn", custom_id="warn"))
+        self.add_item(Button(style=discord.ButtonStyle.danger, label="Punish", custom_id="punish"))
+        self.add_item(Button(style=discord.ButtonStyle.danger, label="Escalate", custom_id="escalate"))
+
+    async def interaction_check(self, interaction):
+        action = interaction.data["custom_id"]
+        
+        if action == "ignore":
+            await interaction.response.send_message("**Action Taken: Ignored**\n\n(Optional) Leave a message explaining your decision.", ephemeral=True)
+
+        elif action == "warn":
+            await interaction.response.send_message("**Action Taken: Warned the user.**\n\n(Optional) Leave a message explaining your decision.", ephemeral=True)
+
+        elif action == "punish":
+            view = PunishActionView(self.report, self.bot)
+            await interaction.response.send_message("🔨 **Punishment Options:**\nSelect an action below:", view=view, ephemeral=True)
+
+        elif action == "escalate":
+            view = EscalationView(self.report, self.bot)
+            await interaction.response.send_message("🚩 **Escalation Options:**\nSelect escalation target:", view=view, ephemeral=True)
+
+        return True
+
+class PunishActionView(View):
+    def __init__(self, report, bot):
+        super().__init__(timeout=600)
+        self.report = report
+        self.bot = bot
+
+        self.add_item(Button(style=discord.ButtonStyle.danger, label="Remove Message", custom_id="remove"))
+        self.add_item(Button(style=discord.ButtonStyle.danger, label="Temporary Mute", custom_id="mute"))
+        self.add_item(Button(style=discord.ButtonStyle.danger, label="Shadow Ban", custom_id="shadowban"))
+        self.add_item(Button(style=discord.ButtonStyle.danger, label="Kick User", custom_id="kick"))
+
+    async def interaction_check(self, interaction):
+        punishment = interaction.data["custom_id"]
+
+        actions = {
+            "remove": "Message removed.",
+            "mute": "User temporarily muted.",
+            "shadowban": "User shadow-banned.",
+            "kick": "User kicked from server."
+        }
+
+        result = actions.get(punishment, "Action performed.")
+
+        await interaction.response.send_message(f"**Action Taken: {result}**\n(Optional) Leave a message explaining your decision.", ephemeral=True)
+
+        return True
+
+class EscalationView(View):
+    def __init__(self, report, bot):
+        super().__init__(timeout=600)
+        self.report = report
+        self.bot = bot
+
+        self.add_item(Button(style=discord.ButtonStyle.primary, label="Trust and Safety Team", custom_id="trust"))
+        self.add_item(Button(style=discord.ButtonStyle.danger, label="Law Enforcement", custom_id="law"))
+
+    async def interaction_check(self, interaction):
+        target = interaction.data["custom_id"]
+
+        targets = {
+            "trust": "Escalated to Trust and Safety team.",
+            "law": "Escalated to Law Enforcement."
+        }
+
+        result = targets.get(target, "Escalated.")
+
+        await interaction.response.send_message(f"**{result}**\n(Required) Why did you escalate the report?", ephemeral=True)
+
+        return True
+

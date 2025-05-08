@@ -6,7 +6,7 @@ import json
 import logging
 import re
 import requests
-from report import Report, ReportTypeView, HateSpeechTypeView, TargetedView, BlockUserView, State
+from report import Report, ReportTypeView, HateSpeechTypeView, TargetedView, BlockUserView, State, ModerationReviewView, PunishActionView, EscalationView
 import datetime
 
 # Set up logging to the console
@@ -224,7 +224,17 @@ class ModBot(discord.Client):
             mod_channel = self.mod_channels[guild_id]
             logger.info(f"Found mod channel: {mod_channel.name}")
 
-            await mod_channel.send("Report received")
+#            await mod_channel.send("Report received")
+            embed = discord.Embed(
+                title="New Report Received",
+                description=f"Reporter: {reporter.name}\nReported User: {report.reported_user.name if report.reported_user else 'Unknown'}\nType: {report.report_type}\nHate Speech Type: {report.hate_speech_type}",
+                timestamp=datetime.datetime.now(),
+                color=discord.Color.orange()
+            )
+
+            view = ModerationReviewView(report, self)
+
+            await mod_channel.send(embed=embed, view=view)
             return True
 
         except Exception as e:
