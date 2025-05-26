@@ -12,7 +12,7 @@ FOUNDATION_MODEL = "Qwen/Qwen2.5-0.5B"
 DATASET = "ucberkeley-dlab/measuring-hate-speech"
 MODELS_DIR = 'classifier/models'
 
-def iterate_over_dataloader(model, tokenizer, optimizer, dataloader, split):
+def iterate_over_dataloader(model, tokenizer, optimizer, dataloader, training):
     total_loss = 0
 
     for batch in tqdm(dataloader):
@@ -27,7 +27,7 @@ def iterate_over_dataloader(model, tokenizer, optimizer, dataloader, split):
         loss = F.binary_cross_entropy_with_logits(output_logits, racist_speech_targets.float())
         total_loss += loss.item()
 
-        if split == 'train':
+        if training:
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -53,16 +53,16 @@ def main(args):
 
     for i in range(args.epochs):
         train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-        train_loss = iterate_over_dataloader(model, tokenizer, optimizer, train_dataloader, 'train')
+        train_loss = iterate_over_dataloader(model, tokenizer, optimizer, train_dataloader, True)
         print(f'Epoch {i}, Train loss: {train_loss}')
         with torch.no_grad():
             val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True)
-            val_loss = iterate_over_dataloader(model, tokenizer, optimizer, val_dataloader, 'val')
+            val_loss = iterate_over_dataloader(model, tokenizer, optimizer, val_dataloader, False)
         print(f'Epoch {i}, Val loss: {val_loss}')
 
     torch.save(
         model.state_dict(),
-        f'classifier/models/seed-{args.seed}_epochs-{args.epochs}_batch-{args.batch_size}_lr-{args.learning_rate}.pt'
+        f'{MODELS_DIR}/seed-{args.seed}_epochs-{args.epochs}_batch-{args.batch_size}_lr-{args.learning_rate}.pt'
     )
 
 if __name__ == '__main__':
