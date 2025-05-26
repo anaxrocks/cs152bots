@@ -15,6 +15,30 @@ FOUNDATION_MODEL = "Qwen/Qwen2.5-0.5B"
 DATASET = "ucberkeley-dlab/measuring-hate-speech"
 MODELS_DIR = 'classifier/models'
 
+def iterate_over_dataloader(model, tokenizer, optimizer, dataloader, split):
+    
+    total_loss = 0
+
+    for batch in tqdm(dataloader):
+        tokenized_input = tokenizer(batch['text'], padding=True, return_tensors='pt')
+        output = model(tokenized_input['input_ids'], tokenized_input['attention_mask'])
+        output_logits = output.logits[:, 0]  # indexing reduces to 1d
+
+        hate_speech_mask = batch['hate_speech_score'] >= 0.5
+        race_mask = batch['target_race'] == 1
+        racist_speech_targets = hate_speech_mask & race_mask
+
+        loss = F.binary_cross_entropy_with_logits(output_logits, racist_speech_targets.float())
+        total_loss += loss.item()
+
+        if split == 'train':
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+    avg_loss = total_loss / len(dataloader)
+    return avg_loss
+
 def main():
     if not os.path.isdir(MODELS_DIR):
         print(f'{MODELS_DIR} directory does not exist. Canceling training run.')
@@ -31,23 +55,14 @@ def main():
     )
     optimizer = AdamW(model.parameters())
 
-
     for i in range(NUM_EPOCHS):
-        dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-        for batch in tqdm(dataloader):
-            tokenized_input = tokenizer(batch['text'], padding=True, return_tensors='pt')
-            output = model(tokenized_input['input_ids'], tokenized_input['attention_mask'])
-            output_logits = output.logits[:, 0]  # indexing reduces to 1d
-
-            hate_speech_mask = batch['hate_speech_score'] >= 0.5
-            race_mask = batch['target_race'] == 1
-            racist_speech_targets = hate_speech_mask & race_mask
-
-            loss = F.binary_cross_entropy_with_logits(output_logits, racist_speech_targets.float())
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+        train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+        train_loss = iterate_over_dataloader(model, tokenizer, optimizer, train_dataloader, 'train')
+        print(f'Epoch {i}, Train loss: {train_loss}')
+        with torch.no_grad():
+            val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=True)
+            val_loss = iterate_over_dataloader(model, tokenizer, optimizer, val_dataloader, 'val')
+        print(f'Epoch {i}, Val loss: {val_loss}')
 
     torch.save(
         model.state_dict(),
