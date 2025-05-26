@@ -1,4 +1,3 @@
-
 from datasets import load_dataset
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 import torch
@@ -23,17 +22,32 @@ def balanced_class_weights():
     not_racist_weight, racist_weight = weights
     return not_racist_weight, racist_weight
 
-def iterate_over_dataloader(model, tokenizer, optimizer, dataloader, training, not_racist_weight, racist_weight):
+def collate_fn(batch):
+    batch_dict = {}
+    for key in batch[0].keys():
+        values = [item[key] for item in batch]
+        if key in ['hate_speech_score', 'target_race']:
+            values = [v if v is not None else 0.0 for v in values]
+        batch_dict[key] = values
+    return batch_dict
+
+def iterate_over_dataloader(model, tokenizer, optimizer, dataloader, training, not_racist_weight, racist_weight, device):
     total_loss = 0
 
     for batch in tqdm(dataloader):
-        tokenized_input = tokenizer(batch['text'], padding=True, return_tensors='pt')
-        output = model(tokenized_input['input_ids'], tokenized_input['attention_mask'])
+        tokenized_input = tokenizer(batch['text'], padding=True, truncation=True, max_length=512, return_tensors='pt')
+        output = model(tokenized_input['input_ids'].to(dtype=torch.float16, device=device), tokenized_input['attention_mask'].to(dtype=torch.float16, device=device))
         output_logits = output.logits[:, 0]  # indexing reduces to 1d
 
-        hate_speech_mask = batch['hate_speech_score'] >= 0.5
-        race_mask = batch['target_race'] == 1
-        racist_speech_targets = hate_speech_mask & race_mask
+        hate_scores = [score if score is not None else 0.0 for score in batch['hate_speech_score']]
+        target_races = [race if race is not None else 0 for race in batch['target_race']]
+        hate_speech_mask = torch.tensor(hate_scores, dtype=torch.float32) >= 0.5
+        race_mask = torch.tensor(target_races, dtype=torch.int) == 1
+        racist_speech_targets = (hate_speech_mask & race_mask).to(torch.bool).to(dtype=torch.float16, device=device)
+
+#        hate_speech_mask = batch['hate_speech_score'] >= 0.5
+#        race_mask = batch['target_race'] == 1
+#        racist_speech_targets = (hate_speech_mask & race_mask).to(torch.bool).to(device)
 
         loss = F.binary_cross_entropy_with_logits(output_logits, racist_speech_targets.float(), reduction='none')
         loss[racist_speech_targets.logical_not()] *= not_racist_weight  # weights account for imbalanced dataset
@@ -50,6 +64,8 @@ def iterate_over_dataloader(model, tokenizer, optimizer, dataloader, training, n
     return avg_loss
 
 def main(args):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     if not os.path.isdir(MODELS_DIR):
         print(f'{MODELS_DIR} directory does not exist. Canceling training run.')
         return
@@ -62,12 +78,16 @@ def main(args):
         num_labels=1,
         sliding_window=None,
         pad_token_id=tokenizer.pad_token_id
-    )
+    ).to(dtype=torch.float16, device=device)
     optimizer = AdamW(model.parameters(), lr=args.learning_rate)
     not_racist_weight, racist_weight = balanced_class_weights()
 
+
+    print("Model size (MB):", sum(p.numel() for p in model.parameters()) * 4 / 1e6)  # FP32
+    print("CUDA allocated:", round(torch.cuda.memory_allocated() / 1024**2, 1), "MB")
+    print("CUDA reserved: ", round(torch.cuda.memory_reserved() / 1024**2, 1), "MB")
     for i in range(args.epochs):
-        train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+        train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
         train_loss = iterate_over_dataloader(
             model,
             tokenizer,
@@ -75,11 +95,12 @@ def main(args):
             train_dataloader,
             True,
             not_racist_weight,
-            racist_weight
+            racist_weight,
+            device=device
         )
         print(f'Epoch {i}, Train loss: {train_loss}')
         with torch.no_grad():
-            val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True)
+            val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
             val_loss = iterate_over_dataloader(
                 model,
                 tokenizer,
@@ -87,7 +108,8 @@ def main(args):
                 val_dataloader,
                 False,
                 not_racist_weight,
-                racist_weight
+                racist_weight,
+                device=device
             )
         print(f'Epoch {i}, Val loss: {val_loss}')
 
@@ -100,7 +122,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--seed', default=42, type=int)
     parser.add_argument('--epochs', default=5, type=int)
-    parser.add_argument('--batch_size', default=16, type=int)
+    parser.add_argument('--batch_size', default=8, type=int)
     parser.add_argument('--learning_rate', default=1e-5, type=float)
     args = parser.parse_args()
     main(args)
