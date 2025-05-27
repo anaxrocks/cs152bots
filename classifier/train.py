@@ -12,6 +12,7 @@ from sklearn.utils.class_weight import compute_class_weight
 FOUNDATION_MODEL = "Qwen/Qwen2.5-0.5B"
 DATASET = "ucberkeley-dlab/measuring-hate-speech"
 MODELS_DIR = 'classifier/models'
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def balanced_class_weights():
     dataset = load_dataset(DATASET, split='train')  # train split includes all rows
@@ -31,23 +32,17 @@ def collate_fn(batch):
         batch_dict[key] = values
     return batch_dict
 
-def iterate_over_dataloader(model, tokenizer, optimizer, dataloader, training, not_racist_weight, racist_weight, device):
+def iterate_over_dataloader(model, tokenizer, optimizer, dataloader, training, not_racist_weight, racist_weight):
     total_loss = 0
 
     for batch in tqdm(dataloader):
-        tokenized_input = tokenizer(batch['text'], padding=True, truncation=True, max_length=512, return_tensors='pt')
-        output = model(tokenized_input['input_ids'].to(dtype=torch.float16, device=device), tokenized_input['attention_mask'].to(dtype=torch.float16, device=device))
+        tokenized_input = tokenizer(batch['text'], padding=True, return_tensors='pt')
+        output = model(tokenized_input['input_ids'].to(device=DEVICE), tokenized_input['attention_mask'].to(device=DEVICE))
         output_logits = output.logits[:, 0]  # indexing reduces to 1d
 
-        hate_scores = [score if score is not None else 0.0 for score in batch['hate_speech_score']]
-        target_races = [race if race is not None else 0 for race in batch['target_race']]
-        hate_speech_mask = torch.tensor(hate_scores, dtype=torch.float32) >= 0.5
-        race_mask = torch.tensor(target_races, dtype=torch.int) == 1
-        racist_speech_targets = (hate_speech_mask & race_mask).to(torch.bool).to(dtype=torch.float16, device=device)
-
-#        hate_speech_mask = batch['hate_speech_score'] >= 0.5
-#        race_mask = batch['target_race'] == 1
-#        racist_speech_targets = (hate_speech_mask & race_mask).to(torch.bool).to(device)
+        hate_speech_mask = batch['hate_speech_score'] >= 0.5
+        race_mask = batch['target_race'] == 1
+        racist_speech_targets = (hate_speech_mask & race_mask).to(device=DEVICE)
 
         loss = F.binary_cross_entropy_with_logits(output_logits, racist_speech_targets.float(), reduction='none')
         loss[racist_speech_targets.logical_not()] *= not_racist_weight  # weights account for imbalanced dataset
@@ -64,8 +59,6 @@ def iterate_over_dataloader(model, tokenizer, optimizer, dataloader, training, n
     return avg_loss
 
 def main(args):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
     if not os.path.isdir(MODELS_DIR):
         print(f'{MODELS_DIR} directory does not exist. Canceling training run.')
         return
@@ -78,7 +71,7 @@ def main(args):
         num_labels=1,
         sliding_window=None,
         pad_token_id=tokenizer.pad_token_id
-    ).to(dtype=torch.float16, device=device)
+    ).to(device=DEVICE)
     optimizer = AdamW(model.parameters(), lr=args.learning_rate)
     not_racist_weight, racist_weight = balanced_class_weights()
 
@@ -96,7 +89,6 @@ def main(args):
             True,
             not_racist_weight,
             racist_weight,
-            device=device
         )
         print(f'Epoch {i}, Train loss: {train_loss}')
         with torch.no_grad():
@@ -109,7 +101,6 @@ def main(args):
                 False,
                 not_racist_weight,
                 racist_weight,
-                device=device
             )
         print(f'Epoch {i}, Val loss: {val_loss}')
 
