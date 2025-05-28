@@ -23,15 +23,6 @@ def balanced_class_weights():
     not_racist_weight, racist_weight = weights
     return not_racist_weight, racist_weight
 
-def collate_fn(batch):
-    batch_dict = {}
-    for key in batch[0].keys():
-        values = [item[key] for item in batch]
-        if key in ['hate_speech_score', 'target_race']:
-            values = [v if v is not None else 0.0 for v in values]
-        batch_dict[key] = values
-    return batch_dict
-
 def iterate_over_dataloader(model, tokenizer, optimizer, dataloader, training, not_racist_weight, racist_weight):
     total_loss = 0
 
@@ -75,12 +66,8 @@ def main(args):
     optimizer = AdamW(model.parameters(), lr=args.learning_rate)
     not_racist_weight, racist_weight = balanced_class_weights()
 
-
-    print("Model size (MB):", sum(p.numel() for p in model.parameters()) * 4 / 1e6)  # FP32
-    print("CUDA allocated:", round(torch.cuda.memory_allocated() / 1024**2, 1), "MB")
-    print("CUDA reserved: ", round(torch.cuda.memory_reserved() / 1024**2, 1), "MB")
     for i in range(args.epochs):
-        train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
+        train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
         train_loss = iterate_over_dataloader(
             model,
             tokenizer,
@@ -92,7 +79,7 @@ def main(args):
         )
         print(f'Epoch {i}, Train loss: {train_loss}')
         with torch.no_grad():
-            val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
+            val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True)
             val_loss = iterate_over_dataloader(
                 model,
                 tokenizer,
@@ -116,4 +103,5 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', default=8, type=int)
     parser.add_argument('--learning_rate', default=1e-5, type=float)
     args = parser.parse_args()
+    torch.manual_seed(parser.seed)
     main(args)

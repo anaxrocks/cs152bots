@@ -3,3 +3,4 @@ DiscordBot/tokens.json
 TABot/tokens.json
 *__pycache__
 *models
+classifier/exp.py
