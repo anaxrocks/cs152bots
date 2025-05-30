@@ -54,8 +54,8 @@ def main(args):
         print(f'{MODELS_DIR} directory does not exist. Canceling training run.')
         return
 
-    train_dataset = load_dataset(DATASET, split="train[:70%]")
-    val_dataset = load_dataset(DATASET, split="train[70%:85%]")
+    train_dataset = load_dataset(DATASET, split="train[:70%]", columns=["text", "hate_speech_score", "target_race"])
+    val_dataset = load_dataset(DATASET, split="train[70%:85%]", columns=["text", "hate_speech_score", "target_race"])
     tokenizer = AutoTokenizer.from_pretrained(FOUNDATION_MODEL)
     model = AutoModelForSequenceClassification.from_pretrained(
         FOUNDATION_MODEL,
@@ -99,7 +99,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--seed', default=42, type=int)
-    parser.add_argument('--epochs', default=5, type=int)
+    parser.add_argument('--epochs', default=3, type=int)
     parser.add_argument('--batch_size', default=8, type=int)
     parser.add_argument('--learning_rate', default=1e-5, type=float)
     args = parser.parse_args()

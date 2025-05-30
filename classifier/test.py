@@ -17,7 +17,7 @@ def main(args):
     model.load_state_dict(state_dict)
     not_racist_weight, racist_weight = balanced_class_weights()
 
-    test_dataset = load_dataset(DATASET, split="train[85%:]")
+    test_dataset = load_dataset(DATASET, split="train[85%:]", columns=["text", "hate_speech_score", "target_race"])
     with torch.no_grad():
         test_dataset = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True)
         test_loss = iterate_over_dataloader(
