@@ -1,0 +1,6 @@
+Epoch 0, Train loss: 0.2899184394157909
+Epoch 0, Val loss: 0.8461434121226084
+Epoch 1, Train loss: 0.18050436912548243
+Epoch 1, Val loss: 0.6396504803648535
+Epoch 2, Train loss: 0.1317950092883281
+Epoch 2, Val loss: 0.6390233692133201
