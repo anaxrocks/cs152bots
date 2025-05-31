@@ -1,4 +1,5 @@
 *.log
+*.pt
 DiscordBot/tokens.json
 TABot/tokens.json
 *__pycache__

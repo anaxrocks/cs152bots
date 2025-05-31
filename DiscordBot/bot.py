@@ -11,7 +11,9 @@ import datetime
 import asyncio
 from typing import List
 
-from model import RacistClassifier, Message
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from classifier.model import RacistClassifier, ModelMessage
 
 # Set up logging to the console
 logger = logging.getLogger('discord')
@@ -51,9 +53,9 @@ class ModBot(discord.Client):
         self.racist_classifier = RacistClassifier()
         self.flagged_messages = []
 
-    def create_message_object(self, discord_message) -> Message:
+    def create_message_object(self, discord_message) -> ModelMessage:
         """Convert a Discord message to our Message class"""
-        message = Message()
+        message = ModelMessage()
         message.content = discord_message.content or ""
         message.is_audio = len(discord_message.attachments) > 0 and any(
             attachment.content_type and attachment.content_type.startswith('audio/')
@@ -214,7 +216,7 @@ class ModBot(discord.Client):
         print('Press Ctrl-C to quit.')
 
         # Parse the group number out of the bot's name
-        match = re.search('[gG]roup (\d+) [bB]ot', self.user.name)
+        match = re.search(r'[gG]roup (\d+) [bB]ot', self.user.name)
         if match:
             self.group_num = match.group(1)
         else:
@@ -423,10 +425,11 @@ class ModBot(discord.Client):
 
             # Get the view associated with this message
             view = self.active_views.get(message_id)
+            view = self.active_views.get(interaction.message.id)
             if not view:
-                if interaction.message.ephemeral:
-                    # Ignore ephemeral interaction messages
-                    return
+#                if interaction.message.ephemeral:
+#                    # Ignore ephemeral interaction messages
+#                    return
                 logger.warning(f"No view found for message {message_id}")
                 return
 

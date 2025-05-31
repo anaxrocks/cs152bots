@@ -6,7 +6,7 @@ from datasets import load_dataset
 
 def main(args):
     model_path = f'{MODELS_DIR}/seed-{args.seed}_epochs-{args.epochs}_batch-{args.batch_size}_lr-{args.learning_rate}.pt'
-    state_dict = torch.load(model_path)
+    state_dict = torch.load(model_path, map_location=torch.device('cpu'))
     tokenizer = AutoTokenizer.from_pretrained(FOUNDATION_MODEL)
     model = AutoModelForSequenceClassification.from_pretrained(
         FOUNDATION_MODEL,
