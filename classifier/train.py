@@ -8,11 +8,25 @@ import os
 import argparse
 import numpy as np
 from sklearn.utils.class_weight import compute_class_weight
+import sklearn.metrics as metrics
 
 FOUNDATION_MODEL = "Qwen/Qwen2.5-0.5B"
 DATASET = "ucberkeley-dlab/measuring-hate-speech"
 MODELS_DIR = 'classifier/models'
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+THRESHOLD = 0.5
+
+def calc_metrics(logits, targets, threshold):
+    probs = torch.sigmoid(logits)
+    preds = probs >= threshold
+    acc = metrics.accuracy_score(targets, preds)
+    print(f'Accuracy: {acc}')
+    precision = metrics.precision_score(targets, preds)
+    print(f'Precision: {precision}')
+    recall = metrics.recall_score(targets, preds)
+    print(f'Recall: {recall}')
+    f1_score = metrics.f1_score(targets, preds)
+    print(f'F1 Score: {f1_score}')
 
 def balanced_class_weights():
     dataset = load_dataset(DATASET, split='train')  # train split includes all rows
@@ -25,6 +39,8 @@ def balanced_class_weights():
 
 def iterate_over_dataloader(model, tokenizer, optimizer, dataloader, training, not_racist_weight, racist_weight):
     total_loss = 0
+    all_logits = []
+    all_targets = []
 
     for batch in tqdm(dataloader):
         tokenized_input = tokenizer(batch['text'], padding=True, return_tensors='pt')
@@ -41,11 +57,15 @@ def iterate_over_dataloader(model, tokenizer, optimizer, dataloader, training, n
         loss = loss.mean()
         total_loss += loss.item()
 
+        all_logits.extend(output_logits.tolist())
+        all_targets.extend(racist_speech_targets.tolist())
+
         if training:
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
+    calc_metrics(all_logits, all_targets, THRESHOLD)
     avg_loss = total_loss / len(dataloader)
     return avg_loss
 

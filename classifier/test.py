@@ -14,6 +14,7 @@ def main(args):
         sliding_window=None,
         pad_token_id=tokenizer.pad_token_id
     )
+    print('Loading state dict.')
     model.load_state_dict(state_dict)
     not_racist_weight, racist_weight = balanced_class_weights()
 
@@ -34,8 +35,8 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--seed', default=42, type=int)
-    parser.add_argument('--epochs', default=5, type=int)
-    parser.add_argument('--batch_size', default=16, type=int)
+    parser.add_argument('--epochs', default=3, type=int)
+    parser.add_argument('--batch_size', default=24, type=int)
     parser.add_argument('--learning_rate', default=1e-5, type=float)
     args = parser.parse_args()
     main(args)
