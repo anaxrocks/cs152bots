@@ -1,8 +1,8 @@
 import argparse
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
-from train import FOUNDATION_MODEL, DATASET, DEVICE, MODELS_DIR, iterate_over_dataloader, balanced_class_weights
+from train import FOUNDATION_MODEL, DATASET, DATASET_SEED, DEVICE, MODELS_DIR, iterate_over_dataloader, balanced_class_weights
 import torch
-from datasets import load_dataset
+from datasets import load_dataset, Dataset
 
 def main(args):
     model_path = f'{MODELS_DIR}/seed-{args.seed}_epochs-{args.epochs}_batch-{args.batch_size}_lr-{args.learning_rate}.pt'
@@ -18,14 +18,16 @@ def main(args):
     model.load_state_dict(state_dict)
     not_racist_weight, racist_weight = balanced_class_weights()
 
-    test_dataset = load_dataset(DATASET, split="train[85%:]", columns=["text", "hate_speech_score", "target_race"])
+    full_dataset = load_dataset(DATASET, split="train", columns=["text", "hate_speech_score", "target_race"]).shuffle(DATASET_SEED)
+    val_end_idx = int(len(full_dataset) * 0.85)
+    test_dataset = full_dataset[val_end_idx:]
     with torch.no_grad():
-        test_dataset = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True)
+        test_dataloader = torch.utils.data.DataLoader(Dataset.from_dict(test_dataset), batch_size=args.batch_size, shuffle=True)
         test_loss = iterate_over_dataloader(
             model,
             tokenizer,
             None,
-            test_dataset,
+            test_dataloader,
             False,
             not_racist_weight,
             racist_weight,

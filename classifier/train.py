@@ -1,4 +1,4 @@
-from datasets import load_dataset
+from datasets import load_dataset, Dataset
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 import torch
 import torch.nn.functional as F
@@ -74,8 +74,11 @@ def main(args):
         print(f'{MODELS_DIR} directory does not exist. Canceling training run.')
         return
 
-    train_dataset = load_dataset(DATASET, split="train[:70%]", columns=["text", "hate_speech_score", "target_race"])
-    val_dataset = load_dataset(DATASET, split="train[70%:85%]", columns=["text", "hate_speech_score", "target_race"])
+    full_dataset = load_dataset(DATASET, split="train", columns=["text", "hate_speech_score", "target_race"]).shuffle(DATASET_SEED)
+    train_end_idx = int(len(full_dataset) * 0.70)
+    val_end_idx = int(len(full_dataset) * 0.85)
+    train_dataset = full_dataset[:train_end_idx]
+    val_dataset = full_dataset[train_end_idx:val_end_idx]
     tokenizer = AutoTokenizer.from_pretrained(FOUNDATION_MODEL)
     model = AutoModelForSequenceClassification.from_pretrained(
         FOUNDATION_MODEL,
@@ -87,7 +90,7 @@ def main(args):
     not_racist_weight, racist_weight = balanced_class_weights()
 
     for i in range(args.epochs):
-        train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+        train_dataloader = torch.utils.data.DataLoader(Dataset.from_dict(train_dataset), batch_size=args.batch_size, shuffle=True)
         train_loss = iterate_over_dataloader(
             model,
             tokenizer,
@@ -100,7 +103,7 @@ def main(args):
         )
         print(f'Epoch {i}, Train loss: {train_loss}')
         with torch.no_grad():
-            val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True)
+            val_dataloader = torch.utils.data.DataLoader(Dataset.from_dict(val_dataset), batch_size=args.batch_size, shuffle=True)
             val_loss = iterate_over_dataloader(
                 model,
                 tokenizer,
