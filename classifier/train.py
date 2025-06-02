@@ -14,7 +14,6 @@ FOUNDATION_MODEL = "Qwen/Qwen2.5-0.5B"
 DATASET = "ucberkeley-dlab/measuring-hate-speech"
 MODELS_DIR = 'classifier/models'
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-THRESHOLD = 0.5
 
 def calc_metrics(logits, targets, threshold):
     probs = torch.sigmoid(torch.Tensor(logits))
@@ -37,7 +36,7 @@ def balanced_class_weights():
     not_racist_weight, racist_weight = weights
     return not_racist_weight, racist_weight
 
-def iterate_over_dataloader(model, tokenizer, optimizer, dataloader, training, not_racist_weight, racist_weight):
+def iterate_over_dataloader(model, tokenizer, optimizer, dataloader, training, not_racist_weight, racist_weight, threshold):
     total_loss = 0
     all_logits = []
     all_targets = []
@@ -65,7 +64,7 @@ def iterate_over_dataloader(model, tokenizer, optimizer, dataloader, training, n
             loss.backward()
             optimizer.step()
 
-    calc_metrics(all_logits, all_targets, THRESHOLD)
+    calc_metrics(all_logits, all_targets, threshold)
     avg_loss = total_loss / len(dataloader)
     return avg_loss
 
@@ -96,6 +95,7 @@ def main(args):
             True,
             not_racist_weight,
             racist_weight,
+            args.threshold
         )
         print(f'Epoch {i}, Train loss: {train_loss}')
         with torch.no_grad():
@@ -108,6 +108,7 @@ def main(args):
                 False,
                 not_racist_weight,
                 racist_weight,
+                args.threshold
             )
         print(f'Epoch {i}, Val loss: {val_loss}')
 
@@ -122,6 +123,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', default=3, type=int)
     parser.add_argument('--batch_size', default=8, type=int)
     parser.add_argument('--learning_rate', default=1e-5, type=float)
+    parser.add_argument('--threshold', default=0.5, type=float)
     args = parser.parse_args()
     torch.manual_seed(args.seed)
     main(args)

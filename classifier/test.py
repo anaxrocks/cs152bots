@@ -28,7 +28,8 @@ def main(args):
             test_dataset,
             False,
             not_racist_weight,
-            racist_weight
+            racist_weight,
+            args.threshold
         )
     print(f'Test loss: {test_loss}')
 
@@ -38,5 +39,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', default=3, type=int)
     parser.add_argument('--batch_size', default=24, type=int)
     parser.add_argument('--learning_rate', default=1e-5, type=float)
+    parser.add_argument('--threshold', default=0.5, type=float)
     args = parser.parse_args()
+    torch.manual_seed(args.seed)
     main(args)
