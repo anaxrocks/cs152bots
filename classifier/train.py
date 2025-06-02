@@ -89,6 +89,7 @@ def main(args):
     optimizer = AdamW(model.parameters(), lr=args.learning_rate)
     not_racist_weight, racist_weight = balanced_class_weights()
 
+    best_val = float('inf')
     for i in range(args.epochs):
         train_dataloader = torch.utils.data.DataLoader(Dataset.from_dict(train_dataset), batch_size=args.batch_size, shuffle=True)
         train_loss = iterate_over_dataloader(
@@ -115,11 +116,14 @@ def main(args):
                 args.threshold
             )
         print(f'Epoch {i}, Val loss: {val_loss}')
+        if val_loss < best_val:
+            print('Saving model.')
+            torch.save(
+                model.state_dict(),
+                f'{MODELS_DIR}/seed-{args.seed}_epochs-{args.epochs}_batch-{args.batch_size}_lr-{args.learning_rate}.pt'
+            )
+            best_val = val_loss
 
-    torch.save(
-        model.state_dict(),
-        f'{MODELS_DIR}/seed-{args.seed}_epochs-{args.epochs}_batch-{args.batch_size}_lr-{args.learning_rate}.pt'
-    )
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
