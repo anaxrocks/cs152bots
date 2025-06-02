@@ -12,6 +12,7 @@ import sklearn.metrics as metrics
 
 FOUNDATION_MODEL = "Qwen/Qwen2.5-0.5B"
 DATASET = "ucberkeley-dlab/measuring-hate-speech"
+DATASET_SEED = 42
 MODELS_DIR = 'classifier/models'
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
