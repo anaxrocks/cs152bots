@@ -17,7 +17,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 THRESHOLD = 0.5
 
 def calc_metrics(logits, targets, threshold):
-    probs = torch.sigmoid(logits)
+    probs = torch.sigmoid(torch.Tensor(logits))
     preds = probs >= threshold
     acc = metrics.accuracy_score(targets, preds)
     print(f'Accuracy: {acc}')

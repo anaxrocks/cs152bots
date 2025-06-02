@@ -1,19 +1,19 @@
 import argparse
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
-from train import FOUNDATION_MODEL, DATASET, MODELS_DIR, iterate_over_dataloader, balanced_class_weights
+from train import FOUNDATION_MODEL, DATASET, DEVICE, MODELS_DIR, iterate_over_dataloader, balanced_class_weights
 import torch
 from datasets import load_dataset
 
 def main(args):
     model_path = f'{MODELS_DIR}/seed-{args.seed}_epochs-{args.epochs}_batch-{args.batch_size}_lr-{args.learning_rate}.pt'
-    state_dict = torch.load(model_path, map_location=torch.device('cpu'))
+    state_dict = torch.load(model_path, map_location=DEVICE)
     tokenizer = AutoTokenizer.from_pretrained(FOUNDATION_MODEL)
     model = AutoModelForSequenceClassification.from_pretrained(
         FOUNDATION_MODEL,
         num_labels=1,
         sliding_window=None,
         pad_token_id=tokenizer.pad_token_id
-    )
+    ).to(DEVICE)
     print('Loading state dict.')
     model.load_state_dict(state_dict)
     not_racist_weight, racist_weight = balanced_class_weights()
