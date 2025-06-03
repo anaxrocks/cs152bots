@@ -1,4 +1,3 @@
-# bot.py
 import discord
 from discord.ext import commands
 import os
@@ -9,7 +8,7 @@ import requests
 from report import Report, ReportTypeView, HateSpeechTypeView, TargetedView, BlockUserView, State, ModerationReviewView, PunishActionView, EscalationView
 import datetime
 import asyncio
-from typing import List
+from typing import List, Dict
 
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -51,7 +50,10 @@ class ModBot(discord.Client):
         self.processed_reports = set()
         self.user_report_counts = {}
         self.racist_classifier = RacistClassifier()
+
+        # Enhanced tracking for flagged messages
         self.flagged_messages = []
+        self.flagged_message_map: Dict[int, dict] = {}  # message_id -> flag_info
 
     def create_message_object(self, discord_message) -> ModelMessage:
         """Convert a Discord message to our Message class"""
@@ -118,6 +120,11 @@ class ModBot(discord.Client):
                 await discord_message.delete()
                 logger.info(f"Deleted reported message from {discord_message.author.name} due to racist content detection")
 
+                # Remove from flagged messages if it was previously flagged
+                if discord_message.id in self.flagged_message_map:
+                    del self.flagged_message_map[discord_message.id]
+                    logger.info(f"Removed message {discord_message.id} from flagged messages tracking")
+
                 # Log the deletion
                 deletion_info = {
                     "timestamp": datetime.datetime.now().isoformat(),
@@ -155,10 +162,12 @@ class ModBot(discord.Client):
                     "content": discord_message.content or "[Audio/Attachment]",
                     "channel": discord_message.channel.name,
                     "guild": discord_message.guild.name if discord_message.guild else "DM",
-                    "reason": "Racist content detected by classifier"
+                    "reason": "Racist content detected by classifier",
+                    "message_obj": discord_message  # Store reference to actual message
                 }
 
                 self.flagged_messages.append(flag_info)
+                self.flagged_message_map[discord_message.id] = flag_info  # For quick lookup
                 logger.info(f"Flagged message from {discord_message.author.name} for review due to racist content detection")
 
                 # Send to mod channel for review
@@ -182,10 +191,51 @@ class ModBot(discord.Client):
 
         except discord.errors.NotFound:
             logger.info("Message was already deleted")
+            # Clean up from tracking if message was deleted
+            if discord_message.id in self.flagged_message_map:
+                del self.flagged_message_map[discord_message.id]
         except discord.errors.Forbidden:
             logger.error("Bot doesn't have permission to delete messages")
         except Exception as e:
             logger.error(f"Error handling racist content detection: {str(e)}")
+
+    async def delete_flagged_messages_in_context(self, context_messages: List):
+        """
+        Delete any messages in the context that were previously flagged by the classifier
+        Returns list of deleted message info
+        """
+        deleted_messages = []
+
+        for message in context_messages:
+            if message.id in self.flagged_message_map:
+                try:
+                    # Message was previously flagged, delete it
+                    await message.delete()
+
+                    deleted_info = {
+                        "message_id": message.id,
+                        "author": message.author.name,
+                        "content": message.content or "[Audio/Attachment]",
+                        "timestamp": message.created_at.isoformat()
+                    }
+                    deleted_messages.append(deleted_info)
+
+                    # Remove from tracking
+                    del self.flagged_message_map[message.id]
+
+                    logger.info(f"Deleted previously flagged message {message.id} from {message.author.name} during report processing")
+
+                except discord.errors.NotFound:
+                    # Message was already deleted
+                    logger.info(f"Previously flagged message {message.id} was already deleted")
+                    if message.id in self.flagged_message_map:
+                        del self.flagged_message_map[message.id]
+                except discord.errors.Forbidden:
+                    logger.error(f"Cannot delete flagged message {message.id} - insufficient permissions")
+                except Exception as e:
+                    logger.error(f"Error deleting flagged message {message.id}: {str(e)}")
+
+        return deleted_messages
 
     async def get_context_messages(self, reported_message, context_count: int):
         """Get context messages before the reported message"""
@@ -345,10 +395,19 @@ class ModBot(discord.Client):
 
                if hasattr(report, 'context_messages') and report.context_messages > 0:
                    context_messages = await self.get_context_messages(report.message, report.context_messages)
+
+                   # NEW: Delete any previously flagged messages in the context
+                   deleted_flagged = await self.delete_flagged_messages_in_context(context_messages)
+
+                   if deleted_flagged:
+                       logger.info(f"Deleted {len(deleted_flagged)} previously flagged messages during report processing")
+                       # Store info about deleted messages for mod channel report
+                       report.deleted_flagged_messages = deleted_flagged
+
                    # Add context messages before the reported message
                    messages_to_classify = context_messages + messages_to_classify
 
-               # NEW LOGIC: Always classify ALL reported messages for hate speech detection
+               # Always classify ALL reported messages for hate speech detection
                try:
                    logger.info(f"Classifying {len(messages_to_classify)} message(s) for reported content from {author.name}")
                    is_racist = await self.classify_multiple_messages(messages_to_classify)
@@ -371,10 +430,20 @@ class ModBot(discord.Client):
                        self.processed_reports.add(report_id)
 
                        # Notify the reporter with appropriate message
+                       notification_parts = []
+
+                       # Check if any flagged messages were deleted
+                       if hasattr(report, 'deleted_flagged_messages') and report.deleted_flagged_messages:
+                           notification_parts.append(f"**{len(report.deleted_flagged_messages)} previously flagged message(s) were automatically deleted.**")
+
                        if is_racist:
-                           await author.send("**Report Processed**\n\nThank you for your report. Our automated system detected policy violations and the message has been removed. The report has also been forwarded to our moderation team for additional review.")
+                           notification_parts.append("Our automated system detected policy violations and the reported message has been removed.")
+                           notification_parts.append("The report has also been forwarded to our moderation team for additional review.")
                        else:
-                           await author.send("**Report Submitted**\n\nThank you for your report. It has been forwarded to our moderation team for review.")
+                           notification_parts.append("The report has been forwarded to our moderation team for review.")
+
+                       full_notification = "**Report Processed**\n\nThank you for your report. " + " ".join(notification_parts)
+                       await author.send(full_notification)
                    else:
                        logger.error(f"Failed to send {report.report_type} report to mod channel for {author.name}")
                        await author.send("Your report was submitted, but there might be an issue with the mod channel configuration. The administrators have been notified about this problem.")
@@ -425,11 +494,7 @@ class ModBot(discord.Client):
 
             # Get the view associated with this message
             view = self.active_views.get(message_id)
-            view = self.active_views.get(interaction.message.id)
             if not view:
-#                if interaction.message.ephemeral:
-#                    # Ignore ephemeral interaction messages
-#                    return
                 logger.warning(f"No view found for message {message_id}")
                 return
 
@@ -450,8 +515,6 @@ class ModBot(discord.Client):
         except Exception as e:
             logger.error(f"Unexpected error in interaction handler: {str(e)}", exc_info=True)
 
-
-    # Replace the send_report_to_mod_channel method in your ModBot class
     async def send_report_to_mod_channel(self, reporter, report):
         """
         Sends the completed report to the moderation channel with transcription if available
@@ -498,6 +561,8 @@ class ModBot(discord.Client):
 
             # Determine classifier result and auto-deletion status
             auto_deleted = getattr(report, 'classifier_auto_deleted', False)
+            deleted_flagged = getattr(report, 'deleted_flagged_messages', [])
+
             if auto_deleted:
                 classifier_result = "HATE SPEECH DETECTED - Message automatically deleted"
                 embed_color = discord.Color.red()
@@ -519,10 +584,18 @@ class ModBot(discord.Client):
             # Add special notice for auto-deleted messages
             deletion_notice = ""
             if auto_deleted:
-                deletion_notice = "⚠️ **MESSAGE WAS AUTOMATICALLY DELETED** - You can still take additional moderation actions below.\n\n"
+                deletion_notice = "⚠️ **REPORTED MESSAGE WAS AUTOMATICALLY DELETED** - You can still take additional moderation actions below.\n\n"
+
+            # Add notice for deleted flagged messages
+            flagged_deletion_notice = ""
+            if deleted_flagged:
+                flagged_deletion_notice = f"🔍 **{len(deleted_flagged)} PREVIOUSLY FLAGGED MESSAGES WERE DELETED** during report processing:\n"
+                for deleted_msg in deleted_flagged:
+                    flagged_deletion_notice += f"• {deleted_msg['author']}: {deleted_msg['content'][:50]}...\n"
+                flagged_deletion_notice += "\n"
 
             body = f"""
-    {deletion_notice}**Reporter:** {reporter_name}
+    {deletion_notice}{flagged_deletion_notice}**Reporter:** {reporter_name}
     **Reported User:** {reported_name}
     **Reported Message:**
     ```{message_content}```
@@ -560,6 +633,11 @@ class MessageReviewView(discord.ui.View):
     async def delete_message(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             await self.flagged_message.delete()
+
+            # Remove from tracking
+            if self.flagged_message.id in self.bot.flagged_message_map:
+                del self.bot.flagged_message_map[self.flagged_message.id]
+
             await interaction.response.send_message("✅ Message deleted.", ephemeral=True)
 
             # Log the action
@@ -567,6 +645,9 @@ class MessageReviewView(discord.ui.View):
 
         except discord.errors.NotFound:
             await interaction.response.send_message("❌ Message was already deleted.", ephemeral=True)
+            # Clean up tracking
+            if self.flagged_message.id in self.bot.flagged_message_map:
+                del self.bot.flagged_message_map[self.flagged_message.id]
         except discord.errors.Forbidden:
             await interaction.response.send_message("❌ Cannot delete message - insufficient permissions.", ephemeral=True)
         except Exception as e:
@@ -574,6 +655,10 @@ class MessageReviewView(discord.ui.View):
 
     @discord.ui.button(label="Keep Message", style=discord.ButtonStyle.success)
     async def keep_message(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Remove from flagged tracking since moderator reviewed and kept it
+        if self.flagged_message.id in self.bot.flagged_message_map:
+            del self.bot.flagged_message_map[self.flagged_message.id]
+
         await interaction.response.send_message("✅ Message reviewed and kept.", ephemeral=True)
         logger.info(f"Moderator {interaction.user.name} kept flagged message from {self.flagged_message.author.name}")
 
