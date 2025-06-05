@@ -125,13 +125,26 @@ class ModBot(discord.Client):
                     del self.flagged_message_map[discord_message.id]
                     logger.info(f"Removed message {discord_message.id} from flagged messages tracking")
 
+                content_text = discord_message.content or "[Audio/Attachment]"
+
+                if len(discord_message.attachments) > 0 and any(
+                    attachment.content_type and attachment.content_type.startswith('audio/')
+                    for attachment in discord_message.attachments
+                ):
+                    message_obj = self.create_message_object(discord_message)
+                    if message_obj.file_path:
+                        transcription = self.racist_classifier.mock_transcribe_audio(message_obj.file_path)
+                        if transcription:
+                            content_text = f"[Audio Transcript] {transcription}"
+
                 # Log the deletion
                 deletion_info = {
                     "timestamp": datetime.datetime.now().isoformat(),
                     "message_id": discord_message.id,
                     "author": discord_message.author.name,
                     "author_id": discord_message.author.id,
-                    "content": discord_message.content or "[Audio/Attachment]",
+#                    "content": discord_message.content or "[Audio/Attachment]",
+                    "content": content_text,
                     "channel": discord_message.channel.name,
                     "guild": discord_message.guild.name if discord_message.guild else "DM",
                     "reason": "Racist content detected in reported message"
@@ -147,19 +160,34 @@ class ModBot(discord.Client):
                     )
                     embed.add_field(
                         name="Message Details",
-                        value=f"**Author:** {discord_message.author.name}\n**Content:** {discord_message.content or '[Audio/Attachment]'}\n**Channel:** {discord_message.channel.name}",
+                        value=f"**Author:** {discord_message.author.name}\n**Content:** {content_text}\n**Channel:** {discord_message.channel.name}",
+#                        value=f"**Author:** {discord_message.author.name}\n**Content:** {discord_message.content or '[Audio/Attachment]'}\n**Channel:** {discord_message.channel.name}",
                         inline=False
                     )
                     await mod_channel.send(embed=embed)
 
             else:
+
+                content_text = discord_message.content or "[Audio/Attachment]"
+
+                if len(discord_message.attachments) > 0 and any(
+                    attachment.content_type and attachment.content_type.startswith('audio/')
+                    for attachment in discord_message.attachments
+                ):
+                    message_obj = self.create_message_object(discord_message)
+                    if message_obj.file_path:
+                        transcription = self.racist_classifier.mock_transcribe_audio(message_obj.file_path)
+                        if transcription:
+                            content_text = f"[Audio Transcript] {transcription}"
+
                 # For regular channel messages, flag for review
                 flag_info = {
                     "timestamp": datetime.datetime.now().isoformat(),
                     "message_id": discord_message.id,
                     "author": discord_message.author.name,
                     "author_id": discord_message.author.id,
-                    "content": discord_message.content or "[Audio/Attachment]",
+#                    "content": discord_message.content or "[Audio/Attachment]",
+                    "content": content_text,
                     "channel": discord_message.channel.name,
                     "guild": discord_message.guild.name if discord_message.guild else "DM",
                     "reason": "Racist content detected by classifier",
@@ -180,7 +208,9 @@ class ModBot(discord.Client):
                     )
                     embed.add_field(
                         name="Message Details",
-                        value=f"**Author:** {discord_message.author.name}\n**Content:** {discord_message.content or '[Audio/Attachment]'}\n**Channel:** {discord_message.channel.name}\n**Jump to Message:** [Click here]({discord_message.jump_url})",
+                        value=f"**Author:** {discord_message.author.name}\n**Content:** {content_text}\n**Channel:** {discord_message.channel.name}\n**Jump to Message:** [Click here]({discord_message.jump_url})",
+
+#                        value=f"**Author:** {discord_message.author.name}\n**Content:** {discord_message.content or '[Audio/Attachment]'}\n**Channel:** {discord_message.channel.name}\n**Jump to Message:** [Click here]({discord_message.jump_url})",
                         inline=False
                     )
 
@@ -212,10 +242,24 @@ class ModBot(discord.Client):
                     # Message was previously flagged, delete it
                     await message.delete()
 
+                    content_text = discord_message.content or "[Audio/Attachment]"
+
+                    if len(discord_message.attachments) > 0 and any(
+                        attachment.content_type and attachment.content_type.startswith('audio/')
+                        for attachment in discord_message.attachments
+                    ):
+                        message_obj = self.create_message_object(discord_message)
+                        if message_obj.file_path:
+                            transcription = self.racist_classifier.mock_transcribe_audio(message_obj.file_path)
+                            if transcription:
+                                content_text = f"[Audio Transcript] {transcription}"
+
+
                     deleted_info = {
                         "message_id": message.id,
                         "author": message.author.name,
-                        "content": message.content or "[Audio/Attachment]",
+#                        "content": message.content or "[Audio/Attachment]",
+                        "content": content_text,
                         "timestamp": message.created_at.isoformat()
                     }
                     deleted_messages.append(deleted_info)
