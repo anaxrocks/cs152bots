@@ -143,7 +143,6 @@ class ModBot(discord.Client):
                     "message_id": discord_message.id,
                     "author": discord_message.author.name,
                     "author_id": discord_message.author.id,
-#                    "content": discord_message.content or "[Audio/Attachment]",
                     "content": content_text,
                     "channel": discord_message.channel.name,
                     "guild": discord_message.guild.name if discord_message.guild else "DM",
@@ -161,7 +160,6 @@ class ModBot(discord.Client):
                     embed.add_field(
                         name="Message Details",
                         value=f"**Author:** {discord_message.author.name}\n**Content:** {content_text}\n**Channel:** {discord_message.channel.name}",
-#                        value=f"**Author:** {discord_message.author.name}\n**Content:** {discord_message.content or '[Audio/Attachment]'}\n**Channel:** {discord_message.channel.name}",
                         inline=False
                     )
                     await mod_channel.send(embed=embed)
@@ -186,7 +184,6 @@ class ModBot(discord.Client):
                     "message_id": discord_message.id,
                     "author": discord_message.author.name,
                     "author_id": discord_message.author.id,
-#                    "content": discord_message.content or "[Audio/Attachment]",
                     "content": content_text,
                     "channel": discord_message.channel.name,
                     "guild": discord_message.guild.name if discord_message.guild else "DM",
@@ -209,8 +206,6 @@ class ModBot(discord.Client):
                     embed.add_field(
                         name="Message Details",
                         value=f"**Author:** {discord_message.author.name}\n**Content:** {content_text}\n**Channel:** {discord_message.channel.name}\n**Jump to Message:** [Click here]({discord_message.jump_url})",
-
-#                        value=f"**Author:** {discord_message.author.name}\n**Content:** {discord_message.content or '[Audio/Attachment]'}\n**Channel:** {discord_message.channel.name}\n**Jump to Message:** [Click here]({discord_message.jump_url})",
                         inline=False
                     )
 
@@ -258,7 +253,6 @@ class ModBot(discord.Client):
                     deleted_info = {
                         "message_id": message.id,
                         "author": message.author.name,
-#                        "content": message.content or "[Audio/Attachment]",
                         "content": content_text,
                         "timestamp": message.created_at.isoformat()
                     }
